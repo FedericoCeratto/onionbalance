@@ -8,13 +8,12 @@ import os
 import signal
 import sys
 import argparse
-import time
 import logging
 
 # import Crypto.PublicKey
 import stem
 from stem.control import Controller, EventType
-from setproctitle import setproctitle
+from setproctitle import setproctitle  # pylint: disable=no-name-in-module
 import schedule
 
 from onionbalance import log
