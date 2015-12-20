@@ -21,6 +21,7 @@ from onionbalance import log
 from onionbalance import settings
 from onionbalance import config
 from onionbalance import eventhandler
+from onionbalance.status import StatusSocket
 
 import onionbalance.service
 import onionbalance.instance
@@ -96,6 +97,8 @@ def main():
 
     logger.setLevel(logging.__dict__[config.LOG_LEVEL.upper()])
 
+    status_socket = StatusSocket(config)
+
     # Create a connection to the Tor control port
     try:
         tor_address = (args.ip or config.TOR_ADDRESS)
@@ -156,6 +159,6 @@ def main():
             schedule.run_pending()
         except Exception:
             logger.error("Unexpected exception:", exc_info=True)
-        time.sleep(1)
+        status_socket.listen_with_timeout()
 
     return 0
