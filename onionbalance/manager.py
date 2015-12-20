@@ -32,12 +32,14 @@ def handle_sigint_sigterm(signum, frame):
     """Handle SIGINT (Ctrl-C) and SIGTERM"""
     logger.info("Signal %d received, exiting", signum)
     handle_sigint_sigterm.__tor_controller.close()
+    handle_sigint_sigterm.__status_socket.close()
     logging.shutdown()
     sys.exit(0)
 
 
-def setup_signal_handler(controller):
+def setup_signal_handler(controller, status_socket):
     handle_sigint_sigterm.__tor_controller = controller
+    handle_sigint_sigterm.__status_socket = status_socket
     signal.signal(signal.SIGTERM, handle_sigint_sigterm)
     signal.signal(signal.SIGINT, handle_sigint_sigterm)
 
@@ -110,7 +112,7 @@ def main():
     else:
         logger.debug("Successfully connected to the Tor control port.")
 
-    setup_signal_handler(controller)
+    setup_signal_handler(controller, status_socket)
 
     try:
         controller.authenticate(password=config.TOR_CONTROL_PASSWORD)
