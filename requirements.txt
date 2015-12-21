@@ -1,7 +1,8 @@
-stem==1.4.1b
 PyYAML==3.11
+future==0.14.3
 pycrypto==2.6.1
 schedule==0.3.1
-future==0.14.3
-sphinxcontrib-autoprogram==0.1.2
 setproctitle==1.1.8
+socksipy==1.02
+sphinxcontrib-autoprogram==0.1.2
+stem==1.4.1b
