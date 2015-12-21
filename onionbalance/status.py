@@ -8,9 +8,11 @@ Provide status over Unix socket
 Default path: /var/run/onionbalance/control
 """
 
-from onionbalance import log
+from datetime import datetime
 import os
 import socket
+
+from onionbalance import log
 
 logger = log.get_logger()
 
@@ -46,6 +48,7 @@ class StatusSocket():
         """
         try:
             conn, addr = self._sock.accept()
+            logger.debug("Received status request")
             self.output_status(conn)
         except socket.timeout:
             return
@@ -62,13 +65,26 @@ class StatusSocket():
         for s in self._config.services:
             self._write(conn, "%s.onion %s" % (s.onion_address, s.uploaded))
             for i in s.instances:
-                if i.timestamp is None:
-                    self._write(conn, "  %s.onion [offline]" % i.onion_address)
-                else:
+                self._write(conn, "  %s" % i.onion_address)
+
+                if i.timestamp:
                     inp_cnt = len(i.introduction_points)
-                    line = "  %s.onion %s %s ips" % (
-                        i.onion_address, i.timestamp, inp_cnt)
-                    self._write(conn, line)
+                    published = "%s %s ips" % (i.timestamp, inp_cnt)
+                else:
+                    published = "[not published]"
+                self._write(conn, "    published:   %s" % published)
+
+                health = " up " if i.is_healthy else "down"
+                self._write(conn, "    health:      [%s]" % health)
+                if i.last_check_time:
+                    tstamp = datetime.fromtimestamp(i.last_check_time)\
+                        .strftime('%Y-%m-%d %H:%M:%S')
+                    self._write(conn, "    check time:  %s" % tstamp)
+                if i.last_check_duration:
+                    self._write(conn, "    duration:    %.3fs" %
+                                i.last_check_duration)
+
+            self._write(conn, '')
 
     def close(self):
         """Close unix socket and remove its file

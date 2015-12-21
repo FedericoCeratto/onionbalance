@@ -47,6 +47,12 @@ def parse_config_file(config_file):
         if not os.path.isabs(service.get('key')):
             service['key'] = os.path.join(config_directory, service['key'])
 
+        service.setdefault('health_check', {})
+        service['health_check'].setdefault('type', None)
+        service['health_check'].setdefault('port', 80)
+        service['health_check'].setdefault('path', '/')
+        service['health_check'].setdefault('timeout', 15)
+
     return config_data
 
 
@@ -89,21 +95,24 @@ def initialize_services(controller, services_config):
         else:
             instances = []
             for instance in instance_config:
-                instances.append(onionbalance.instance.Instance(
+                new_instance = onionbalance.instance.Instance(
                     controller=controller,
                     onion_address=instance.get("address"),
                     authentication_cookie=instance.get("auth")
-                ))
+                )
+                instances.append(new_instance)
 
             logger.info("Loaded %d instances for service %s.onion.",
                         len(instances), onion_address)
 
         # Store service configuration in config.services global
-        config.services.append(onionbalance.service.Service(
+        new_service = onionbalance.service.Service(
             controller=controller,
             service_key=service_key,
-            instances=instances
-        ))
+            instances=instances,
+            health_check_conf=service['health_check']
+        )
+        config.services.append(new_service)
 
 
 def parse_cmd_args():

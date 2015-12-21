@@ -6,6 +6,7 @@ import stem.control
 
 from onionbalance import log
 from onionbalance import config
+from onionbalance import healthchecks
 
 logger = log.get_logger()
 
@@ -54,6 +55,14 @@ class Instance(object):
         # master descriptor will then be published as the introduction
         # points have changed.
         self.changed_since_published = False
+
+        # Health status
+        self.is_healthy = None
+        # Has the health status changed since previous run
+        # The value reset by Service._instances_health_has_changed()
+        self.health_changed = False
+        self.last_check_time = None
+        self.last_check_duration = None
 
     def fetch_descriptor(self):
         """
@@ -112,3 +121,36 @@ class Instance(object):
         else:
             logger.debug("Introduction points for instance %s.onion matched "
                          "the cached set.", self.onion_address)
+
+    def check_health(self, conf):
+        """Run a health check against the instance
+        Update self.is_healthy and self.health_changed
+        """
+        if conf['type'] is None:  # no health checking
+            self.is_healthy = True
+            return
+
+        # conf e.g. {'type': 'http', 'port': 80, 'path': '/', 'timeout': 15}
+        port = conf['port']
+        timeout = conf['timeout']
+        if conf['type'] == 'tcp':
+            healthy, ctime, cd = healthchecks.check_tcp(
+                self.onion_address, port, timeout)
+        elif conf['type'] == 'http':
+            healthy, ctime, cd = healthchecks.check_http(
+                self.onion_address, port, conf['path'], timeout)
+        elif conf['type'] == 'https':
+            healthy, ctime, cd = healthchecks.check_https(
+                self.onion_address, port, conf['path'], timeout)
+        else:
+            raise ValueError("Unexpected check type")
+
+        self.last_check_time = ctime
+        self.last_check_duration = cd
+        if healthy != self.is_healthy:
+            if healthy:
+                logger.info("Instance %s went online", self.onion_address)
+            else:
+                logger.warn("Instance %s went offline", self.onion_address)
+            self.health_changed = True
+            self.is_healthy = healthy

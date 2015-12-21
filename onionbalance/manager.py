@@ -75,6 +75,13 @@ def parse_cmd_args():
     return parser
 
 
+def check_global_health():
+    """Run a health check across all instances under all services
+    """
+    for s in config.services:
+        s.check_health()
+
+
 def main():
     """
     Entry point when invoked over the command line.
@@ -146,6 +153,8 @@ def main():
                                   EventType.HS_DESC_CONTENT)
 
     # Schedule descriptor fetch and upload events
+    schedule.every(config.HEALTH_CHECK_INTERVAL).seconds.do(
+        check_global_health)
     schedule.every(config.REFRESH_INTERVAL).seconds.do(
         onionbalance.instance.fetch_instance_descriptors, controller)
     schedule.every(config.PUBLISH_CHECK_INTERVAL).seconds.do(
