@@ -7,13 +7,13 @@
 Test health checking
 """
 
+from pytest import fixture, raises
+import datetime
+import pytest
 import urllib.request
 
-import pytest
-from pytest import fixture, raises
-
-from onionbalance.instance import Instance
 from onionbalance import healthchecks
+from onionbalance.instance import Instance
 
 
 @fixture
@@ -66,3 +66,71 @@ def test_check_health_http_fails(check_type, instance, monkeypatch):
     assert not instance.is_healthy
     assert instance.last_check_time == 1
     assert instance.last_check_duration == 2
+
+
+def test_active_standby_all_healthy(service_active_standby):
+    now = datetime.datetime.utcnow()
+    for n in range(3):
+        i = Instance('mock_controller', '%d.onion' % n)
+        i.is_healthy = True
+        i.received = now
+        i.timestamp = now
+        i.introduction_points.append('mock InP %d' % n)
+        service_active_standby.instances.append(i)
+
+    ipoints = service_active_standby._select_introduction_points()
+    assert service_active_standby._preferred_active_instance
+    assert service_active_standby._preferred_active_instance.onion_address == \
+        "0.onion"
+    assert ipoints == ['mock InP 0']
+
+
+def test_active_standby_two_healthy(service_active_standby):
+    now = datetime.datetime.utcnow()
+    for n in range(3):
+        i = Instance('mock_controller', '%d.onion' % n)
+        i.is_healthy = bool(n)
+        i.received = now
+        i.timestamp = now
+        i.introduction_points.append('mock InP %d' % n)
+        service_active_standby.instances.append(i)
+
+    ipoints = service_active_standby._select_introduction_points()
+    assert service_active_standby._preferred_active_instance.onion_address == \
+        "1.onion"
+    assert ipoints == ['mock InP 1']
+
+
+def test_active_standby_failover(service_active_standby):
+    now = datetime.datetime.utcnow()
+    for n in range(3):
+        i = Instance('mock_controller', '%d.onion' % n)
+        i.is_healthy = (n != 1) # first and third are healthy
+        i.received = now
+        i.timestamp = now
+        i.introduction_points.append('mock InP %d' % n)
+        service_active_standby.instances.append(i)
+
+    ipoints = service_active_standby._select_introduction_points()
+    assert ipoints == ['mock InP 0']
+
+    # first goes down: perform failover
+    service_active_standby.instances[0].is_healthy = False
+    ipoints = service_active_standby._select_introduction_points()
+    assert ipoints == ['mock InP 2']
+
+    # first goes up again, no change
+    service_active_standby.instances[0].is_healthy = True
+    ipoints = service_active_standby._select_introduction_points()
+    assert ipoints == ['mock InP 2']
+
+    # third goes down: perform failover
+    service_active_standby.instances[2].is_healthy = False
+    ipoints = service_active_standby._select_introduction_points()
+    assert ipoints == ['mock InP 0']
+
+    # first goes down: nothing left
+    service_active_standby.instances[0].is_healthy = False
+    ipoints = service_active_standby._select_introduction_points()
+    assert ipoints == []
+

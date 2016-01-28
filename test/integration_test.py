@@ -204,6 +204,7 @@ def create_ob_conf(n):
         'port': 80,
         'path': '/ob_ping',
         'timeout': 2,
+        'model': 'active-standby',
     }
     print("-- ob conf --")
     print(yaml.dump(conf))

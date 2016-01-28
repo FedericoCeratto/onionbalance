@@ -52,6 +52,7 @@ def parse_config_file(config_file):
         service['health_check'].setdefault('port', 80)
         service['health_check'].setdefault('path', '/')
         service['health_check'].setdefault('timeout', 15)
+        service['health_check'].setdefault('model', 'active-active')
 
     return config_data
 

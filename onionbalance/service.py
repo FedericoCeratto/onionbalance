@@ -13,6 +13,8 @@ from onionbalance import config
 
 logger = log.get_logger()
 
+max_descriptor_age = 4 * 60 * 60
+
 
 def publish_all_descriptors():
     """
@@ -48,9 +50,7 @@ class Service(object):
             raise ValueError("Service key is not a valid RSA object.")
 
         # List of instances for this onion service
-        if not instances:
-            instances = []
-        self.instances = instances
+        self.instances = instances or []
 
         # Calculate the onion address for this service
         self.onion_address = util.calc_onion_address(self.service_key)
@@ -60,6 +60,9 @@ class Service(object):
 
         # Health checking configuration
         self.health_check_conf = health_check_conf
+        self.active_standby_mode = health_check_conf['model'] == \
+            'active-standby'
+        self._preferred_active_instance = None
 
     def _intro_points_modified(self):
         """
@@ -103,16 +106,15 @@ class Service(object):
         seconds_valid = util.get_seconds_valid(time.time(), permanent_id)
 
         # Check if descriptor ID will be changing within the overlap period.
-        if seconds_valid < config.DESCRIPTOR_OVERLAP_PERIOD:
-            return True
-        else:
-            return False
+        return (seconds_valid < config.DESCRIPTOR_OVERLAP_PERIOD)
 
     def _select_introduction_points(self):
         """
         Choose set of introduction points from all fresh descriptors
+        If health checks are enabled, only healthy instances are selected.
         """
-        available_intro_points = []
+        now = datetime.datetime.utcnow()
+        selected_instances = []
 
         # TODO: add fail-open threshold on instance health
 
@@ -131,22 +133,39 @@ class Service(object):
             # The instance may be offline if no descriptor has been received
             # for it recently or if the received descriptor's timestamp is
             # too old
-            received_age = datetime.datetime.utcnow() - instance.received
-            timestamp_age = datetime.datetime.utcnow() - instance.timestamp
+            received_age = now - instance.received
+            timestamp_age = now - instance.timestamp
             received_age = received_age.total_seconds()
             timestamp_age = timestamp_age.total_seconds()
 
             if (received_age > config.DESCRIPTOR_UPLOAD_PERIOD or
-                    timestamp_age > (4 * 60 * 60)):
+                    timestamp_age > max_descriptor_age):
                 logger.info("Our descriptor for instance %s.onion is too old. "
                             "The instance may be offline. It's introduction "
                             "points will not be included in the master "
                             "descriptor.", instance.onion_address)
                 continue
-            else:
-                # Include this instance's introduction points
-                instance.changed_since_published = False
-                available_intro_points.append(instance.introduction_points)
+
+            # Include this instance's introduction points
+            instance.changed_since_published = False
+            selected_instances.append(instance)
+
+        if self.active_standby_mode and selected_instances:
+            # When running in active-standby mode, only one instance is active
+            # at a time. Failover happens only when the currently active
+            # instance goes offline
+            if self._preferred_active_instance is None:
+                self._preferred_active_instance = selected_instances[0]
+
+            if self._preferred_active_instance not in selected_instances:
+                logger.info("Active-standby failover! Switching to"
+                            " new instance %s" % instance.onion_address)
+                self._preferred_active_instance = selected_instances[0]
+
+            selected_instances = (self._preferred_active_instance, )
+
+        available_intro_points = [i.introduction_points
+                                  for i in selected_instances]
 
         num_intro_points = sum(len(ips) for ips in available_intro_points)
         choosen_intro_points = descriptor.choose_introduction_point_set(
